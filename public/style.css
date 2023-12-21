@@ -1045,6 +1045,12 @@ body .panelControlBar {
     transition: 250ms;
 }
 
+.mesAvatarWrapper {
+    padding-right: 8px;
+    /* padding-bottom: 8px; */
+    float: left;
+}
+
 .last_mes .mesAvatarWrapper {
     padding-bottom: var(--avatar-base-height);
 }
@@ -5152,7 +5158,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .zoomed_avatar {
     /* Max height with 2/3 aspect ratio */
-    --maxWidth: calc(90vh * 0.666);
+    --maxWidth: calc(90vh * 0.5);
     /* Left gap between the left corner and chat */
     --leftGapWidth: calc((100vw - var(--sheldWidth)) / 2);
     /* Left position of the avatar (half of the gap minus half of the avatar width) */
