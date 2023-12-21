@@ -894,7 +894,7 @@ async function CreateZenSliders(elmnt) {
     }
 }
 function switchUiMode() {
-    $('body').toggleClass('no-blur', power_user.fast_ui_mode);
+    // $('body').toggleClass('no-blur', power_user.fast_ui_mode);
     $('#fast_ui_mode').prop('checked', power_user.fast_ui_mode);
     if (power_user.fast_ui_mode) {
         $('#blur-strength-block').css('opacity', '0.2');
