@@ -191,6 +191,8 @@ router.post('/generate', jsonParser, async function (req, res) {
         signal: controller.signal,
     };
 
+    console.log('Prompt:', req.body.input);
+
     try {
         const baseURL = req.body.model.includes('kayra') ? TEXT_NOVELAI : API_NOVELAI;
         const url = req.body.streaming ? `${baseURL}/ai/generate-stream` : `${baseURL}/ai/generate`;
