@@ -824,6 +824,9 @@ function parseTimestamp(timestamp) {
         if (!isValid) return;
         return new Date(unixTime).toISOString();
     }
+    if (typeof timestamp === 'string' && timestamp.match(/^\d+$/)) {
+        return moment(parseInt(timestamp, 10)).toISOString();
+    }
 
     let dtFmt = [];
 
