@@ -9904,10 +9904,25 @@ jQuery(async function () {
         }
 
         else if (id == 'option_impersonate') {
-            if (is_send_press == false || fromSlashCommand) {
-                is_send_press = true;
-                Generate('impersonate', buildOrFillAdditionalArgs());
+            const previousApi = main_api;
+            // Switch API to NovelAI if it's not already selected
+            if (main_api !== 'novel') {
+                $('#main_api').val('novel');
+                changeMainAPI();
             }
+
+            setTimeout(async () => {
+                console.log('triggering impersonate click');
+                if (is_send_press == false || fromSlashCommand) {
+                    is_send_press = true;
+                    setOnlineStatus('Opus');
+                    const sendGeneration = await Generate('impersonate', buildOrFillAdditionalArgs());
+                    await sendGeneration;
+                    $('#main_api').val(previousApi);
+                    changeMainAPI();
+                    setOnlineStatus('Success');
+                }
+            }, 100);
         }
 
         else if (id == 'option_continue') {
