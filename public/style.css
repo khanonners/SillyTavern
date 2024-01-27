@@ -1045,12 +1045,6 @@ body .panelControlBar {
     transition: 250ms;
 }
 
-.mesAvatarWrapper {
-    padding-right: 8px;
-    /* padding-bottom: 8px; */
-    float: left;
-}
-
 .last_mes .mesAvatarWrapper {
     padding-bottom: var(--avatar-base-height);
 }
