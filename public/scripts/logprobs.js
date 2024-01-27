@@ -177,7 +177,12 @@ function renderTopLogprobs() {
         if (token !== '<others>') {
             container.click(() => onAlternativeClicked(state.selectedTokenLogprobs, token));
         } else {
-            container.prop('disabled', true);
+            container.click(async () => {
+                const custom = await callPopup('<h3>Custom continuation</h3><p>Continue from the selected token with custom text:</p>', 'input');
+                if (custom) {
+                    onAlternativeClicked(state.selectedTokenLogprobs, custom);
+                }
+            })
         }
         nodes.push(container);
     }
