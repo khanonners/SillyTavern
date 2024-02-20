@@ -1,3 +1,4 @@
+const fs = require('fs');
 const express = require('express');
 const fetch = require('node-fetch').default;
 const _ = require('lodash');
@@ -228,6 +229,10 @@ router.post('/generate', jsonParser, async function (request, response) {
         const apiType = request.body.api_type;
         const baseUrl = request.body.api_server;
         console.log(request.body);
+
+        const finalPrompt = request.body.prompt;
+        fs.mkdirSync('./logs', { recursive: true });
+        fs.writeFileSync(`./logs/last-prompt.txt`, finalPrompt);
 
         const controller = new AbortController();
         request.socket.removeAllListeners('close');

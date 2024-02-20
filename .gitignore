@@ -46,6 +46,7 @@ access.log
 /cache/
 public/css/user.css
 /plugins/
+/logs/
 /data
 /default/scaffold
 public/scripts/extensions/third-party
