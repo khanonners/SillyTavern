@@ -273,6 +273,9 @@ export function getInstructStoppingSequences() {
         ].join('\n');
 
         combined_sequence.split('\n').filter((line, index, self) => self.indexOf(line) === index).forEach(addInstructSequence);
+        if (power_user.instruct.separator_sequence) {
+            addInstructSequence(power_user.instruct.separator_sequence);
+        }
     }
 
     if (power_user.context.use_stop_strings) {

@@ -232,7 +232,7 @@ router.post('/generate', jsonParser, async function (request, response) {
 
         const finalPrompt = request.body.prompt;
         fs.mkdirSync('./logs', { recursive: true });
-        fs.writeFileSync(`./logs/last-prompt.txt`, finalPrompt);
+        fs.writeFileSync('./logs/last-prompt.txt', finalPrompt);
 
         const controller = new AbortController();
         request.socket.removeAllListeners('close');
