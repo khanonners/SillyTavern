@@ -1010,40 +1010,51 @@ export function initRossMods() {
                 return;
             }
         }
-
-        // Ctrl+Enter for Regeneration Last Response. If editing, accept the edits instead
+        // Ctrl+Enter for sending message or accepting edits
         if (event.ctrlKey && event.key == 'Enter') {
             const editMesDone = $('.mes_edit_done:visible');
             if (editMesDone.length > 0) {
-                console.debug('Accepting edits with Ctrl+Enter');
+                console.debug('Accepting edits with Ctrl+R');
                 editMesDone.trigger('click');
+            }
+
+            const alreadySending = is_send_press;
+            if (alreadySending) {
+                console.debug('Ctrl+Enter ignored');
                 return;
-            } else if (is_send_press == false) {
-                const skipConfirmKey = 'RegenerateWithCtrlEnter';
+            }
+
+            event.preventDefault();
+            sendTextareaMessage();
+        }
+        // Ctrl+R for Regeneration Last Response
+        if (event.ctrlKey && event.key == 'R') {
+            if (is_send_press == false) {
+                const skipConfirmKey = 'RegenerateWithCtrlR';
                 const skipConfirm = LoadLocalBool(skipConfirmKey);
                 function doRegenerate() {
-                    console.debug('Regenerating with Ctrl+Enter');
+                    console.debug('Regenerating with Ctrl+R');
                     $('#option_regenerate').trigger('click');
                     $('#options').hide();
                 }
                 if (skipConfirm) {
                     doRegenerate();
                 } else {
-                    let regenerateWithCtrlEnter = false;
+                    let regenerateWithCtrlR = false;
                     const result = await Popup.show.confirm('Regenerate Message', 'Are you sure you want to regenerate the latest message?', {
-                        customInputs: [{ id: 'regenerateWithCtrlEnter', label: 'Don\'t ask again' }],
-                        onClose: (popup) => regenerateWithCtrlEnter = popup.inputResults.get('regenerateWithCtrlEnter') ?? false,
+                        customInputs: [{ id: 'regenerateWithCtrlR', label: 'Don\'t ask again' }],
+                        onClose: (popup) => regenerateWithCtrlR = popup.inputResults.get('regenerateWithCtrlR') ?? false,
                     });
                     if (!result) {
                         return;
                     }
 
-                    SaveLocal(skipConfirmKey, regenerateWithCtrlEnter);
+                    SaveLocal(skipConfirmKey, regenerateWithCtrlR);
                     doRegenerate();
                 }
                 return;
             } else {
-                console.debug('Ctrl+Enter ignored');
+                console.debug('Ctrl+R ignored');
             }
         }
 
