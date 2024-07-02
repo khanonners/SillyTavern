@@ -107,6 +107,7 @@ export const persona_description_positions = {
 
 let power_user = {
     charListGrid: false,
+    continuation_max_length: 50,
     tokenizer: tokenizers.BEST_MATCH,
     token_padding: 64,
     collapse_newlines: false,
