@@ -3027,7 +3027,7 @@ async function generateNovelImage(prompt, negativePrompt, signal) {
         headers: getRequestHeaders(),
         signal: signal,
         body: JSON.stringify({
-            prompt: prompt,
+            prompt: prompt + ", best quality, amazing quality, very aesthetic, absurdres",
             model: extension_settings.sd.model,
             sampler: extension_settings.sd.sampler,
             steps: steps,
@@ -3040,6 +3040,7 @@ async function generateNovelImage(prompt, negativePrompt, signal) {
             sm: sm,
             sm_dyn: sm_dyn,
             seed: extension_settings.sd.seed >= 0 ? extension_settings.sd.seed : undefined,
+            cfg_rescale: 0.2,
         }),
     });
 
