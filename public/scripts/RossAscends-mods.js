@@ -1010,12 +1010,19 @@ export function initRossMods() {
                 return;
             }
         }
+        
+        
         // Ctrl+Enter for sending message or accepting edits
-        if (event.ctrlKey && event.key == 'Enter') {
-            const editMesDone = $('.mes_edit_done:visible');
+        // Slash commands don't require Ctrl
+        const editMesDone = $('.mes_edit_done:visible');
+        const isSlashCommandInput = editMesDone.length === 0 &&
+            !event.shiftKey &&
+            String($('#send_textarea').val()).startsWith('/');
+        if (event.key == 'Enter' && (event.ctrlKey || isSlashCommandInput)) {
             if (editMesDone.length > 0) {
-                console.debug('Accepting edits with Ctrl+R');
+                console.debug('Accepting edits with Ctrl+Enter');
                 editMesDone.trigger('click');
+                return;
             }
 
             const alreadySending = is_send_press;
@@ -1028,8 +1035,9 @@ export function initRossMods() {
             sendTextareaMessage();
         }
         // Ctrl+R for Regeneration Last Response
-        if (event.ctrlKey && event.key == 'R') {
+        if (event.ctrlKey && event.key == 'r') {
             if (is_send_press == false) {
+                event.preventDefault();
                 const skipConfirmKey = 'RegenerateWithCtrlR';
                 const skipConfirm = LoadLocalBool(skipConfirmKey);
                 function doRegenerate() {
