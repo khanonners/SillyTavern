@@ -4209,6 +4209,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
     let maxLength = Number(amount_gen); // how many tokens the AI will be requested to generate
     let thisPromptBits = [];
+    
+    // For continue generations, use a reduced output length
+    if (isContinue) {
+        maxLength = Math.min(maxLength, power_user.continuation_max_length);
+    }
 
     let generate_data;
     switch (main_api) {
@@ -9904,25 +9909,8 @@ jQuery(async function () {
         }
 
         else if (id == 'option_impersonate') {
-            const previousApi = main_api;
-            // Switch API to NovelAI if it's not already selected
-            if (main_api !== 'novel') {
-                $('#main_api').val('novel');
-                changeMainAPI();
-            }
-
-            setTimeout(async () => {
-                console.log('triggering impersonate click');
-                if (is_send_press == false || fromSlashCommand) {
-                    is_send_press = true;
-                    setOnlineStatus('Opus');
                     const sendGeneration = await Generate('impersonate', buildOrFillAdditionalArgs());
                     await sendGeneration;
-                    $('#main_api').val(previousApi);
-                    changeMainAPI();
-                    setOnlineStatus('Success');
-                }
-            }, 100);
         }
 
         else if (id == 'option_continue') {

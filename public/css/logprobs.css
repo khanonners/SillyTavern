@@ -1,7 +1,7 @@
 #logprobsViewer {
     overflow-y: auto;
     max-width: 90dvw;
-    max-height: 90dvh;
+    max-height: 70dvh;
     min-width: 100px;
     min-height: 50px;
     border-radius: 10px;
@@ -12,7 +12,10 @@
     flex-direction: column;
     box-shadow: 0 0 10px var(--black70a);
     z-index: 3000;
-    left: 0;
+    /*left: 0;*/
+    /*right: unset;*/
+    left: unset;
+    right: 0;
     top: 0;
     margin: 0;
     right: unset;
@@ -69,6 +72,10 @@
 
 .logprobs_output_prefix {
     opacity: 0.5;
+}
+
+.logprobs_output_prefix:hover {
+    opacity: 0.8;
 }
 
 .logprobs_candidate_list {
@@ -132,4 +139,38 @@
 
 .logprobs_tint_3:hover, .logprobs_tint_3.selected {
     background-color: rgba(50, 205, 50, 0.4);
+}
+
+#logprobs_continuations_toolbar {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    justify-content: space-between;
+}
+
+#logprobs_continuations_toolbar.hidden {
+    display: none;
+}
+
+.logprobs_continuations_toolbar_group > div {
+    display: inline-block;
+}
+
+.logprobs_toolbar_button {
+    border: none;
+    background-color: transparent;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    opacity: 0.75;
+    font-size: 1em;
+}
+
+.logprobs_toolbar_button:hover, .logprobs_toolbar_button:focus {
+    opacity: 1;
+}
+
+.logprobs_toolbar_button:disabled {
+    opacity: 0.3;
 }

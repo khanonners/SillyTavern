@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 const fetch = require('node-fetch').default;
 
 const { jsonParser } = require('../../express-common');
@@ -136,7 +137,8 @@ async function sendClaudeRequest(request, response) {
         if (enableSystemPromptCache) {
             additionalHeaders['anthropic-beta'] = 'prompt-caching-2024-07-31';
         }
-        console.log('Claude request:', requestBody);
+        console.log('Claude request:', JSON.stringify(requestBody, null, 2));
+        fs.writeFileSync('claude_request.json', JSON.stringify(requestBody, null, 2));
 
         const generateResponse = await fetch(apiUrl + '/messages', {
             method: 'POST',
