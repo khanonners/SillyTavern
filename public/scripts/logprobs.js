@@ -9,8 +9,10 @@ import {
     getGeneratingApi,
     is_send_press,
     isStreamingEnabled,
+    saveChatConditional,
+    updateMessageBlock,
 } from '../script.js';
-import { debounce, delay, getStringHash } from './utils.js';
+import { debounce, delay, getStringHash, uuidv4 } from './utils.js';
 import { decodeTextTokens, getTokenizerBestMatch } from './tokenizers.js';
 import { power_user } from './power-user.js';
 
@@ -23,17 +25,21 @@ const MAX_MESSAGE_LOGPROBS = 100;
  */
 
 /**
- * Logprob data for a single message
- * @typedef {Object} MessageLogprobData
- * @property {number} created - timestamp of when the message was generated
- * @property {number} hash - hash of the message object
- * @property {number} messageId - ID of the source message
- * @property {number} swipeId - ID of the source swipe on the source message
- * @property {string} api - API used to generate the message
- * @property {TokenLogprobs[]} messageLogprobs Logprob data for each token, by
- * its index in the message
+ * A node in the logprobs tree, representing a single generated message from
+ * from the model and its logprob data.
+ *
+ * Elements without a parent are root nodes, representing the original message
+ * (or swiped message) from which 'continue' gen was invoked.
+ * @typedef {Object} LogprobsNode
+ * @property {string} nodeId - unique ID
+ * @property {string} [parent] - node ID of the parent LogprobsNode
+ * @property {string[]} children - node IDs of child LogprobsNodes
+ * @property {number} created - timestamp of when the node was created
+ * @property {number} messageHash - hash of the source message
+ * @property {TokenLogprobs[]} messageLogprobs - logprobs for each token
  * @property {string | null} continueFrom - the 'continue' prefix used to
  * generate the message, if any
+ * @property {string | null} alternative - the selected alternative token
  */
 
 /**
@@ -46,8 +52,17 @@ const MAX_MESSAGE_LOGPROBS = 100;
 let state = {
     /** @type {TokenLogprobs | null} */
     selectedTokenLogprobs: null,
-    /** @type {Map<number, MessageLogprobData>} */
-    messageLogprobs: new Map(),
+    /** @type {Map<string, LogprobsNode>} */
+    nodes: new Map(),
+    /**
+     * When we invoke a 'continue' completion, we create the node and hold it
+     * here until the completion and logprobs data are received.
+     * @type {LogprobsNode | null}
+     */
+    pendingNode: null,
+    /** @type {string[]} */
+    undoStack: [],
+    ignoreEdit: false,
 };
 
 /**
@@ -57,14 +72,14 @@ let state = {
  */
 function renderAlternativeTokensView() {
     const view = $('#logprobs_generation_output');
-    if (!view.is(':visible')) {
+    if (state.pendingNode) {
         return;
     }
     view.empty();
     state.selectedTokenLogprobs = null;
     renderTopLogprobs();
 
-    const { messageLogprobs, continueFrom } = getActiveMessageLogprobData() || {};
+    const { messageLogprobs, continueFrom } = findActiveLogprobsNode() || {};
     const usingSmoothStreaming = isStreamingEnabled() && power_user.smooth_streaming;
     if (!messageLogprobs?.length || usingSmoothStreaming) {
         const emptyState = $('<div></div>');
@@ -107,6 +122,8 @@ function renderAlternativeTokensView() {
     });
 
     view.append(tokenSpans);
+
+    renderContinuationsToolbar();
 
     // scroll past long prior context
     if (prefix) {
@@ -197,6 +214,63 @@ function renderTopLogprobs() {
 }
 
 /**
+ * renderContinuationsToolbar renders the continuations toolbar subview for the
+ * active message. If the message has no continuations, the subview is hidden.
+ */
+function renderContinuationsToolbar() {
+    const view = $('#logprobs_continuations_toolbar').removeClass('hidden');
+    // If we're in a continuation, we'll have a node ID on the active swipe.
+    const { nodeId, parent: parentId } = findActiveLogprobsNode() || {};
+    if (!getActiveSwipeInfo()?.extra?.logprobs_node_id) {
+        return view.addClass('hidden');
+    }
+
+    const alternativesGroup = $('#logprobs_alternatives_group');
+    const prevAlternative = alternativesGroup.find('#logprobs_prev_alternative').prop('disabled', true);
+    const nextAlternative = alternativesGroup.find('#logprobs_next_alternative').prop('disabled', true);
+    const counter = alternativesGroup.find('#logprobs_alternative_index');
+    const historyGroup = $('#logprobs_history_group');
+    const undo = historyGroup.find('#logprobs_undo').prop('disabled', true);
+    const redo = historyGroup.find('#logprobs_redo').prop('disabled', true);
+
+    if (state.undoStack.length) {
+        redo.prop('disabled', false);
+    }
+    undo.off('click').click(() => {
+        switchDisplayedMessage(parentId);
+        state.undoStack.push(nodeId);
+    });
+    redo.off('click').click(() => {
+        switchDisplayedMessage(state.undoStack.pop());
+    });
+
+    if (!parentId) {
+        counter.text('1 / 1');
+        return;
+    } else {
+        undo.prop('disabled', false);
+    }
+
+    const parentNode = state.nodes.get(parentId);
+    const numAlternatives = parentNode.children.length;
+    const indexWithinParent = parentNode.children.indexOf(nodeId);
+    counter.text(`${indexWithinParent + 1} / ${numAlternatives}`);
+
+    if (indexWithinParent !== 0) {
+        prevAlternative.prop('disabled', false);
+    }
+    if (indexWithinParent !== numAlternatives - 1) {
+        nextAlternative.prop('disabled', false);
+    }
+    prevAlternative.off('click').click(() => {
+        switchDisplayedMessage(parentNode.children[indexWithinParent - 1]);
+    });
+    nextAlternative.off('click').click(() => {
+        switchDisplayedMessage(parentNode.children[indexWithinParent + 1]);
+    });
+}
+
+/**
  * onSelectedTokenChanged is called when the user clicks on a token in the
  * token output view. It updates the selected token state and re-renders the
  * top logprobs view, or deselects the token if it was already selected.
@@ -231,7 +305,7 @@ function onAlternativeClicked(tokenLogprobs, alternative) {
         return callPopup('<h3>Feature unavailable</h3><p>Due to API limitations, rerolling a token is not supported with OpenAI. Try switching to a different API.</p>', 'text');
     }
 
-    const { messageLogprobs, continueFrom } = getActiveMessageLogprobData();
+    const { messageLogprobs, continueFrom } = findActiveLogprobsNode();
     const replaceIndex = messageLogprobs.findIndex(x => x === tokenLogprobs);
 
     const tokens = messageLogprobs.slice(0, replaceIndex + 1).map(({ token }) => token);
@@ -239,12 +313,9 @@ function onAlternativeClicked(tokenLogprobs, alternative) {
 
     const prefix = continueFrom || '';
     const prompt = prefix + tokens.join('');
-    const messageId = chat.length - 1;
-    createSwipe(messageId, prompt);
-
-    $('.swipe_right:last').click(); // :see_no_evil:
-
-    Generate('continue').then(_ => void _);
+    generateContinuation(prompt, alternative);
+    state.selectedTokenLogprobs = null;
+    renderTopLogprobs();
 }
 
 /**
@@ -258,22 +329,25 @@ function onPrefixClicked() {
         return;
     }
 
-    const { continueFrom } = getActiveMessageLogprobData();
-    const messageId = chat.length - 1;
+    const { continueFrom } = findActiveLogprobsNode();
     const prefix = continueFrom || '';
-    createSwipe(messageId, prefix);
-    $('.swipe_right:last').click();
-    Generate('continue').then(_ => void _);
+    generateContinuation(prefix);
+    state.selectedTokenLogprobs = null;
+    renderTopLogprobs();
 }
 
 function checkGenerateReady() {
+    const isEditing = $('#mes_edit_buttons').is(':visible');
     if (is_send_press) {
-        toastr.warning('Please wait for the current generation to complete.');
+        toastr.warning(`There is already an active generation in progress.`);
+        return false;
+    }
+    if (isEditing) {
+        toastr.warning(`Save or discard any active edits before continuing.`);
         return false;
     }
     return true;
 }
-
 
 /**
  * onToggleLogprobsPanel is called when the user performs an action that toggles
@@ -312,33 +386,69 @@ function onToggleLogprobsPanel() {
     }
 }
 
+function switchDisplayedMessage(nodeId) {
+    const node = state.nodes.get(nodeId);
+    const msg = chat[chat.length - 1];
+
+    const text = node.continueFrom + node.messageLogprobs.map(({ token }) => token).join('');
+    msg.mes = cleanUpMessage(text, false, false);
+    // There is also `substituteParams` but I have no idea what it does
+    updateMessageBlock(chat.length - 1, msg);
+    setNodeIdForSwipe(getActiveSwipeInfo(), nodeId);
+
+
+    state.ignoreEdit = true;
+    eventSource.once(event_types.MESSAGE_EDITED, () => state.ignoreEdit = false);
+    eventSource.emit(event_types.MESSAGE_EDITED, msg).then(saveChatConditional).then(renderAlternativeTokensView);
+}
+
 /**
- * createSwipe appends a new swipe to the target chat message with the given
- * text.
- * @param {number} messageId - target chat message ID
- * @param {string} prompt - initial prompt text which will be continued
+ * generateContinuation sends a 'continue' completion request to the model with
+ * the given prompt and alternative token.  A new LogprobsNode will be created
+ * for the pending completion and parented to the active message's LogprobsNode.
+ * @param {string} prompt
+ * @param {string} [alternative]
  */
-function createSwipe(messageId, prompt) {
-    // need to call `cleanUpMessage` on our new prompt, because we were working
-    // with raw model output and our new prompt is missing trimming/macro replacements
-    const cleanedPrompt = cleanUpMessage(prompt, false, false);
+function generateContinuation(prompt, alternative) {
+    // Since our prompt was derived from raw tokens, it hasn't been cleaned up
+    // the same way as existing message text. However `cleanUpMessage` might
+    // remove the user's chosen alternative token (ie. trailing whitespace) so
+    // we add it back if it's missing.
+    let cleanedPrompt = cleanUpMessage(prompt, false, false);
+    if (alternative && !cleanedPrompt.endsWith(alternative)) {
+        cleanedPrompt += alternative;
+    }
 
-    const msg = chat[messageId];
-    const newSwipeInfo = {
-        send_date: msg.send_date,
-        gen_started: msg.gen_started,
-        gen_finished: msg.gen_finished,
-        extra: { ...structuredClone(msg.extra), from_logprobs: new Date().getTime() },
-    };
+    let swipeInfo = getActiveSwipeInfo();
+    state.pendingNode = createLogprobsNode({
+        continueFrom: prompt,
+        alternative,
+    });
 
-    msg.swipes = msg.swipes || [];
-    msg.swipe_info = msg.swipe_info || [];
+    // If the active swipe doesn't have a node ID, we'll create a new node for
+    // it and make it the root of the tree.  Once the pending generation is
+    // completed, it will immediately be added as a child of this node.
+    if (!swipeInfo?.extra?.logprobs_node_id) {
+        const { mes } = chat[chat.length - 1];
+        const newNode = createLogprobsNode({ continueFrom: mes });
+        state.nodes.set(newNode.nodeId, newNode);
+        setNodeIdForSwipe(swipeInfo, newNode.nodeId);
+        console.log('logprobs: created new root node for logprobs generation', newNode)
+    }
 
-    // Add our new swipe, then make sure the active swipe is the one just before
-    // it. The call to `swipe_right` will switch to it immediately.
-    msg.swipes.push(cleanedPrompt);
-    msg.swipe_info.push(newSwipeInfo);
-    msg.swipe_id = Math.max(0, msg.swipes.length - 2);
+    // If no alternative is provided, the user is rerolling is rerolling the
+    // entire gen and this is a sibling. Otherwise, it's a child.
+    const isSibling = !alternative
+    const activeNode = state.nodes.get(swipeInfo.extra.logprobs_node_id);
+    state.pendingNode.parent = isSibling ? activeNode.parent : activeNode.nodeId;
+
+    const msg = chat[chat.length - 1];
+    msg.swipes[msg.swipe_id] = cleanedPrompt;
+    msg.mes = cleanedPrompt;
+    updateMessageBlock(chat.length - 1, msg);
+
+    console.log('logprobs: requesting continuation', state.pendingNode, prompt, alternative)
+    Generate('continue').finally(() => state.pendingNode = null);
 }
 
 /**
@@ -349,6 +459,191 @@ function createSwipe(messageId, prompt) {
  */
 function toVisibleWhitespace(input) {
     return input.replace(/ /g, '·').replace(/▁/g, '·').replace(/\n/g, '↵');
+}
+
+/** @returns {{ send_date: number, gen_started: number, gen_finished: number, extra: any } | null} */
+function getActiveSwipeInfo() {
+    const msgId = chat.length - 1;
+    if (!chat[msgId].swipe_info?.length) {
+        return null;
+    }
+    return chat[msgId].swipe_info[chat[msgId].swipe_id];
+}
+
+function getMessageHash(message) {
+    // We don't use the swipe ID as a hash component because it's not stable,
+    // deleting a swipe will change the ID of all subsequent swipes.
+    const hashParams = {
+        name: message.name,
+        mid: chat.indexOf(message),
+        text: message.mes,
+    };
+    return getStringHash(JSON.stringify(hashParams));
+}
+
+/**
+ * findActiveLogprobsNode returns the LogprobsNode associated with the active
+ * message. If there are no logprobs for the active message, it returns null.
+ * @returns {LogprobsNode | null}
+ */
+function findActiveLogprobsNode() {
+    // First look for the node ID on the active swipe
+    const swipeInfo = getActiveSwipeInfo();
+    const nodeId = swipeInfo?.extra?.logprobs_node_id;
+    const node = state.nodes.get(nodeId);
+
+    if (nodeId && !node) {
+        // Node expired or app was reloaded, clear the persisted node ID
+        delete swipeInfo.extra.logprobs_node_id;
+    } else if (node) {
+        return node;
+    }
+
+    // If there's no node ID saved to the swipe, or there are no swipes, then
+    // look for a root node with a matching message hash.
+    const hash = getMessageHash(chat[chat.length - 1]);
+    for (const node of state.nodes.values()) {
+        if (!node.parent && node.messageHash === hash) {
+            return node;
+        }
+    }
+    return null;
+}
+
+/**
+ * createLogprobsNode returns a new LogprobsNode with the given parent and
+ * continuation prefix, without adding it to the logprobs tree.
+ * @param {string} [parent] - id of the parent node, if any
+ * @param {string} [continueFrom] - continuation prefix, if any
+ * @param {string} [alternative] - selected alternative token, if any
+ * @returns {LogprobsNode}
+ */
+export function createLogprobsNode({ parent, continueFrom, alternative }) {
+    return {
+        nodeId: uuidv4(),
+        parent,
+        children: [],
+        created: new Date().getTime(),
+        messageHash: 0,
+        messageLogprobs: [],
+        continueFrom,
+        alternative,
+    };
+}
+
+/**
+ * setNodeIdForSwipe sets the given LogprobsNode ID on the given swipe info's
+ * extras field, allowing it to be identified as the parent of a continuation.
+ * @param {object} swipeInfo - the swipe info object to modify
+ * @param {string} nodeId - the logprobs node ID to associate with the swipe
+ */
+function setNodeIdForSwipe(swipeInfo, nodeId) {
+    // Value is made non-enumerable to prevent it from being copied to new
+    // swipes or saved to disk.
+    Object.defineProperty(swipeInfo.extra, 'logprobs_node_id', {
+        value: nodeId,
+        enumerable: false,
+        configurable: true,
+    });
+}
+
+/**
+ * saveLogprobsForActiveMessage receives an array of TokenLogprobs objects
+ * representing the top logprobs for each token in a message and associates it
+ * with the active message.
+ *
+ * **Ensure the active message has been updated and rendered before calling
+ * this function or the logprobs data will be saved to the wrong message.**
+ * @param {TokenLogprobs[]} logprobs - array of logprobs data for each token
+ * @param {string | null} continueFrom  - for 'continue' generations, the prompt
+ */
+export function saveLogprobsForActiveMessage(logprobs, continueFrom) {
+    if (!logprobs) {
+        // non-streaming APIs could return null data
+        return;
+    }
+
+    convertTokenIdLogprobsToText(logprobs);
+
+    let node;
+    const swipeInfo = getActiveSwipeInfo();
+    if (state.pendingNode) {
+        // Generation was triggered by the logprobs UI.
+
+        node = state.pendingNode;
+        state.pendingNode = null;
+
+        const parentId = node.parent;
+        if (parentId) {
+            const parentNode = state.nodes.get(parentId);
+            parentNode.children.push(node.nodeId);
+        }
+
+        // Associate the new continuation node with the active swipe
+        setNodeIdForSwipe(swipeInfo, node.nodeId);
+        console.log('logprobs: added new child node for logprobs generation', node)
+    } else if (swipeInfo?.extra?.logprobs_node_id) {
+        // Generation not triggered by the logprobs UI, but is on a swipe with
+        // previous logprobs data, so we'll add it to the tree as a child.
+        node = createLogprobsNode({ parent: swipeInfo.extra.logprobs_node_id, continueFrom });
+        const parentNode = state.nodes.get(node.parent);
+        parentNode.children.push(node.nodeId);
+        console.log('logprobs: added new child node for external generation', node)
+    } else {
+        // Generation not triggered by the logprobs UI, and has no previous
+        // logprobs data.
+        node = createLogprobsNode({ continueFrom });
+        setNodeIdForSwipe(swipeInfo, node.nodeId);
+        console.log('logprobs: created new root node', node)
+    }
+
+    // Set message data for the node and add it to the logprobs map
+    node.messageHash = getMessageHash(chat[chat.length - 1]);
+    node.messageLogprobs = logprobs;
+    state.nodes.set(node.nodeId, node);
+
+    // Clean up old logprobs data
+    const oldLogprobs = Array.from(state.nodes.values())
+        .sort((a, b) => b.created - a.created)
+        .slice(MAX_MESSAGE_LOGPROBS);
+    for (const oldData of oldLogprobs) {
+        state.nodes.delete(oldData.id);
+    }
+
+    renderAlternativeTokensView();
+}
+
+/**
+ * convertLogprobTokenIdsToText mutates the given logprobs data's topLogprobs
+ * field keyed by token text instead of token ID. This is only necessary for
+ * APIs which only return token IDs in their logprobs data; for others this
+ * function is a no-op.
+ * @param {TokenLogprobs[]} input - logprobs data with numeric token IDs
+ */
+function convertTokenIdLogprobsToText(input) {
+    const api = getGeneratingApi();
+    if (api !== 'novel') {
+        return input;
+    }
+
+    const tokenizerId = getTokenizerBestMatch(api);
+
+    // Flatten unique token IDs across all logprobs
+    const tokenIds = Array.from(new Set(input.flatMap(logprobs =>
+        logprobs.topLogprobs.map(([token]) => token).concat(logprobs.token),
+    )));
+
+    // Submit token IDs to tokenizer to get token text, then build ID->text map
+    const { chunks } = decodeTextTokens(tokenizerId, tokenIds);
+    const tokenIdText = new Map(tokenIds.map((id, i) => [id, chunks[i]]));
+
+    // Fixup logprobs data with token text
+    input.forEach(logprobs => {
+        logprobs.token = tokenIdText.get(logprobs.token);
+        logprobs.topLogprobs = logprobs.topLogprobs.map(([token, logprob]) =>
+            [tokenIdText.get(token), logprob],
+        );
+    });
 }
 
 /**
@@ -386,109 +681,52 @@ function withVirtualWhitespace(text, span) {
     return result;
 }
 
-/**
- * saveLogprobsForActiveMessage receives an array of TokenLogprobs objects
- * representing the top logprobs for each token in a message and associates it
- * with the active message.
- *
- * **Ensure the active message has been updated and rendered before calling
- * this function or the logprobs data will be saved to the wrong message.**
- * @param {TokenLogprobs[]} logprobs - array of logprobs data for each token
- * @param {string | null} continueFrom  - for 'continue' generations, the prompt
- */
-export function saveLogprobsForActiveMessage(logprobs, continueFrom) {
-    if (!logprobs) {
-        // non-streaming APIs could return null data
+function handleEditedMessage() {
+    if (state.ignoreEdit) {
         return;
     }
 
-    convertTokenIdLogprobsToText(logprobs);
+    // Once a message has been edited, the logprobs data for it is no longer
+    // valid. If it was a continuation (has a parent) we'll create a new child
+    // that has only `continueFrom` set to the new message text.  If it's a
+    // root node the hash will no longer match so we can just re-render.
+    const msg = chat[chat.length - 1];
+    const swipeInfo = getActiveSwipeInfo();
+    const parent = swipeInfo?.extra?.logprobs_node_id;
+    const currentHash = getMessageHash(msg);
+    const previousHash = findActiveLogprobsNode()?.messageHash;
 
-    const msgId = chat.length - 1;
-    /** @type {MessageLogprobData} */
-    const data = {
-        created: new Date().getTime(),
-        api: getGeneratingApi(),
-        messageId: msgId,
-        swipeId: chat[msgId].swipe_id,
-        messageLogprobs: logprobs,
-        continueFrom,
-        hash: getMessageHash(chat[msgId]),
-    };
-
-    state.messageLogprobs.set(data.hash, data);
-
-    // Clean up old logprobs data
-    const oldLogprobs = Array.from(state.messageLogprobs.values())
-        .sort((a, b) => b.created - a.created)
-        .slice(MAX_MESSAGE_LOGPROBS);
-    for (const oldData of oldLogprobs) {
-        state.messageLogprobs.delete(oldData.hash);
-    }
-}
-
-function getMessageHash(message) {
-    // We don't use the swipe ID as a hash component because it's not stable,
-    // deleting a swipe will change the ID of all subsequent swipes.
-    const hashParams = {
-        name: message.name,
-        mid: chat.indexOf(message),
-        text: message.mes,
-    };
-    return getStringHash(JSON.stringify(hashParams));
-}
-
-/**
- * getActiveMessageLogprobData returns the logprobs data for the active chat
- * message.
- * @returns {MessageLogprobData || null}
- */
-function getActiveMessageLogprobData() {
-    const hash = getMessageHash(chat[chat.length - 1]);
-    return state.messageLogprobs.get(hash) || null;
-}
-
-/**
- * convertLogprobTokenIdsToText mutates the given logprobs data's topLogprobs
- * field keyed by token text instead of token ID. This is only necessary for
- * APIs which only return token IDs in their logprobs data; for others this
- * function is a no-op.
- * @param {TokenLogprobs[]} input - logprobs data with numeric token IDs
- */
-function convertTokenIdLogprobsToText(input) {
-    const api = getGeneratingApi();
-    if (api !== 'novel') {
-        return input;
+    if (parent && currentHash !== previousHash) {
+        const node = createLogprobsNode({ parent, continueFrom: msg.mes });
+        /** @type {Candidate} */
+        node.messageLogprobs = [{ token: '', topLogprobs: [] }];
+        setNodeIdForSwipe(swipeInfo, node.nodeId);
+        state.nodes.set(node.nodeId, node);
+        console.log('logprobs: created new child node for edited message', node);
     }
 
-    const tokenizerId = getTokenizerBestMatch(api);
-
-    // Flatten unique token IDs across all logprobs
-    const tokenIds = Array.from(new Set(input.flatMap(logprobs =>
-        logprobs.topLogprobs.map(([token]) => token).concat(logprobs.token),
-    )));
-
-    // Submit token IDs to tokenizer to get token text, then build ID->text map
-    const { chunks } = decodeTextTokens(tokenizerId, tokenIds);
-    const tokenIdText = new Map(tokenIds.map((id, i) => [id, chunks[i]]));
-
-    // Fixup logprobs data with token text
-    input.forEach(logprobs => {
-        logprobs.token = tokenIdText.get(logprobs.token);
-        logprobs.topLogprobs = logprobs.topLogprobs.map(([token, logprob]) =>
-            [tokenIdText.get(token), logprob],
-        );
-    });
+    renderAlternativeTokensView();
 }
 
 export function initLogprobs() {
-    const debouncedRender = debounce(renderAlternativeTokensView);
+    const debouncedRender = debounce(() => {
+        state.undoStack = [];
+        renderAlternativeTokensView();
+    });
     $('#logprobsViewerClose').click(onToggleLogprobsPanel);
     $('#option_toggle_logprobs').click(onToggleLogprobsPanel);
+    // invoke collapse on the logprobs panel if the user clicks the header text
+    $('.logprobs_panel_header').click((event) => {
+        const button = $('#logprobsViewerCollapse');
+        if (event.target === button[0]) {
+            return;
+        }
+        button.click();
+    });
     eventSource.on(event_types.CHAT_CHANGED, debouncedRender);
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, debouncedRender);
     eventSource.on(event_types.IMPERSONATE_READY, debouncedRender);
     eventSource.on(event_types.MESSAGE_DELETED, debouncedRender);
-    eventSource.on(event_types.MESSAGE_EDITED, debouncedRender);
+    eventSource.on(event_types.MESSAGE_EDITED, handleEditedMessage);
     eventSource.on(event_types.MESSAGE_SWIPED, debouncedRender);
 }

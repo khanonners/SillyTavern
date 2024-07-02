@@ -6317,6 +6317,7 @@
                     <b data-i18n="Token Probabilities">Token Probabilities</b>
                 </div>
                 <div class="logprobs_panel_controls">
+                    <!-- from main -->
                     <div id="logprobsViewerheader" class="logprobs_panel_control_button drag-grabber">
                         <i class="custom-drawer-icon fa-solid fa-grip"></i>
                     </div>
@@ -6326,6 +6327,8 @@
                     <div id="logprovsViewerBlockToggle" class="logprobs_panel_control_button inline-drawer-toggle">
                         <i class="inline-drawer-icon fa-solid fa-circle-chevron-up up"></i>
                     </div>
+                    <!-- from logprobs -->
+                    <div id="logprobsViewerCollapse" class="logprobs_panel_control_button inline-drawer-toggle inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                     <div id="logprobsViewerClose" class="logprobs_panel_control_button inline-drawer-icon fa-solid fa-circle-xmark "></div>
                 </div>
             </div>
@@ -6334,6 +6337,17 @@
                     <b data-i18n="Select a token to see alternatives considered by the AI.">Select a token to see alternatives considered by the AI.</b>
                 </small>
                 <hr>
+                <div id="logprobs_continuations_toolbar" class="hidden">
+                    <div id="logprobs_history_group" class="logprobs_continuations_toolbar_group">
+                        <button id="logprobs_undo" class="logprobs_toolbar_button fa-solid fa-undo" title="Undo" data-i18n="[title]Undo"></button>
+                        <button id="logprobs_redo" class="logprobs_toolbar_button fa-solid fa-redo" title="Redo" data-i18n="[title]Redo"></button>
+                    </div>
+                    <div id="logprobs_alternatives_group" class="logprobs_continuations_toolbar_group">
+                        <button id="logprobs_prev_alternative" class="logprobs_toolbar_button fa-solid fa-chevron-left" title="Previous continuation" data-i18n="[title]Previous continuation"></button>
+                        <div id="logprobs_alternative_index">1 / 1</div>
+                        <button id="logprobs_next_alternative" class="logprobs_toolbar_button fa-solid fa-chevron-right" title="Next continuation" data-i18n="[title]Next continuation"></button>
+                    </div>
+                </div>
                 <div id="logprobs_generation_output"></div>
                 <div id="logprobs_selected_top_logprobs" class="logprobs_candidate_list"></div>
             </div>
