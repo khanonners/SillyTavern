@@ -1521,6 +1521,7 @@ async function loadPowerUserSettings(settings, data) {
     $(`#chat_display option[value=${power_user.chat_display}]`).attr('selected', true).trigger('change');
     $('#chat_width_slider').val(power_user.chat_width);
     $('#token_padding').val(power_user.token_padding);
+    $('#continuation_max_length').val(power_user.continuation_max_length);
     $('#aux_field').val(power_user.aux_field);
     $('#tag_import_setting').val(power_user.tag_import_setting);
 
@@ -3469,6 +3470,11 @@ $(document).ready(() => {
 
     $('#token_padding').on('input', function () {
         power_user.token_padding = Number($(this).val());
+        saveSettingsDebounced();
+    });
+    
+    $('#continuation_max_length').on('input', function () {
+        power_user.continuation_max_length = Number($(this).val());
         saveSettingsDebounced();
     });
 

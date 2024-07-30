@@ -3090,6 +3090,9 @@ class StreamingProcessor {
     onErrorStreaming() {
         this.abortController.abort();
         this.isStopped = true;
+        
+        const continueMsg = this.type === 'continue' ? this.messageAlreadyGenerated : undefined;
+        saveLogprobsForActiveMessage(this.messageLogprobs.filter(Boolean), continueMsg);
 
         this.hideMessageButtons(this.messageId);
         generatedPromptCache = '';
@@ -4030,9 +4033,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Clean up the already generated prompt for seamless addition
     function cleanupPromptCache(promptCache) {
         // Remove the first occurrance of character's name
-        if (promptCache.trimStart().startsWith(`${name2}:`)) {
-            promptCache = promptCache.replace(`${name2}:`, '').trimStart();
-        }
+        // if (promptCache.trimStart().startsWith(`${name2}:`)) {
+        //     promptCache = promptCache.replace(`${name2}:`, '').trimStart();
+        // }
+        // khanon: why? this causes continuations to not identify the character
+        // being continued which makes the speaker less clear to the model
 
         // Remove the first occurrance of prompt bias
         if (promptCache.trimStart().startsWith(promptBias)) {
@@ -4212,7 +4217,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     
     // For continue generations, use a reduced output length
     if (isContinue) {
-        maxLength = Math.min(maxLength, power_user.continuation_max_length);
+        maxLength = Math.min(maxLength, power_user.continuation_max_length || Number.MAX_SAFE_INTEGER);
     }
 
     let generate_data;
