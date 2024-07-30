@@ -232,6 +232,11 @@ router.post('/generate', jsonParser, async function (request, response) {
 
         const finalPrompt = request.body.prompt;
         fs.mkdirSync('./logs', { recursive: true });
+        
+        const hasLastPrompt = fs.existsSync('./logs/last-prompt.txt');
+        if (hasLastPrompt) {
+            fs.copyFileSync('./logs/last-prompt.txt', './logs/last-prompt-prev.txt');
+        }
         fs.writeFileSync('./logs/last-prompt.txt', finalPrompt);
 
         const controller = new AbortController();
