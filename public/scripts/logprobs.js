@@ -713,16 +713,19 @@ export function initLogprobs() {
         state.undoStack = [];
         renderAlternativeTokensView();
     });
-    $('#logprobsViewerClose').click(onToggleLogprobsPanel);
+    $('#logprobsViewerClose').click(event => {
+        event.preventDefault();
+        onToggleLogprobsPanel();
+    });
     $('#option_toggle_logprobs').click(onToggleLogprobsPanel);
     // invoke collapse on the logprobs panel if the user clicks the header text
-    $('.logprobs_panel_header').click((event) => {
-        const button = $('#logprobsViewerCollapse');
-        if (event.target === button[0]) {
-            return;
-        }
-        button.click();
-    });
+    // $('.logprobs_panel_header').click((event) => {
+    //     const buttonId = event.target.id;
+    //     if (buttonId !== 'logprobsViewerCollapse') {
+    //         return;
+    //     }
+    //     $('#logprobsViewerCollapse').click();
+    // });
     eventSource.on(event_types.CHAT_CHANGED, debouncedRender);
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, debouncedRender);
     eventSource.on(event_types.IMPERSONATE_READY, debouncedRender);
