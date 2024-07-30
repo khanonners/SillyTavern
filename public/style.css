@@ -948,6 +948,13 @@ body .panelControlBar {
     background-color: rgb(102, 0, 0);
 }
 
+.mes.keyboard_focused {
+    box-shadow: inset 0 0 0 2px var(--SmartThemeQuoteColor);
+}
+.mes:focus-visible {
+    outline: none;
+}
+
 .mes q:before,
 .mes q:after {
     content: '';

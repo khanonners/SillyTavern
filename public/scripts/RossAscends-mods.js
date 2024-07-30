@@ -50,6 +50,9 @@ var WorldInfo = document.getElementById('WorldInfo');
 
 var SelectedCharacterTab = document.getElementById('rm_button_selected_ch');
 
+var usingKbNav = false;
+var lastFocusedMesId = null;
+
 var connection_made = false;
 var retry_delay = 500;
 let counterNonce = Date.now();
@@ -200,6 +203,35 @@ $('#rm_button_create').on('click', function () {                 //when "+New Ch
 $('#rm_ch_create_block').on('input', function () { countTokensDebounced(); });
 //when any input is made to the advanced editing popup textareas
 $('#character_popup').on('input', function () { countTokensDebounced(); });
+
+$('#send_textarea').on('click', function (e) {
+    usingKbNav = false;
+});
+$('#chat').on('mousedown', function (e) {
+    usingKbNav = false;
+});
+$('#chat').on('scroll', function (e) {
+    usingKbNav = false;
+});
+$('#chat').on('keydown', function (e) {
+    usingKbNav = true;
+});
+$('#chat').on('focus', '.mes', function(e) {
+    if (usingKbNav) {
+        $(this).addClass('keyboard_focused');
+        lastFocusedMesId = e.target.attributes?.mesid?.value || null;
+        console.log('focused', e.target, lastFocusedMesId);
+    }
+});
+$('#chat').on('blur', '.mes', function(e) {
+    // skip if focus is a child of this element
+    if (e.relatedTarget && e.relatedTarget.closest('.mes') === e.target) {
+        return;
+    }
+    
+    $(this).removeClass('keyboard_focused');
+});
+
 //function:
 export async function RA_CountCharTokens() {
     counterNonce = Date.now();
@@ -1065,6 +1097,128 @@ export function initRossMods() {
                 console.debug('Ctrl+R ignored');
             }
         }
+        
+        const focusedEditable = $('input:focus, textarea:focus, [contenteditable]:focus');
+        const isAnyInputFocused = focusedEditable.length > 0;
+        const isCaretAtStart = sendTextArea === document.activeElement && sendTextArea.selectionStart === 0;
+        const currentKbFocusMes = $('.mes.keyboard_focused');
+        let focusedMes = currentKbFocusMes.get(0) 
+        const tryFocusLastFocusedMes = () => {
+            lastFocusedMesId = lastFocusedMesId || $('#chat').children().last().attr('mesid');
+            const lastFocusedMes = $('.mes').filter(`[mesid="${lastFocusedMesId}"]`);
+            if (lastFocusedMes.length > 0) {
+                usingKbNav = true;
+                focusedMes = lastFocusedMes.get(0);
+                focusedMes.focus();
+                scrollIntoViewIfNeeded(focusedMes);
+            }
+        }
+        // const mesId = focusedMes && $(focusedMes).attr('mesid');
+        const isFirst = focusedMes && $(focusedMes).is(':first-child');
+        const isLast = focusedMes && $('#chat').children().last().get(0) === focusedMes;
+        if (event.key == 'ArrowUp' && (!isAnyInputFocused || isCaretAtStart)) {
+            event.preventDefault();
+            usingKbNav = true;
+            if (isFirst) {
+                $('#send_textarea').focus();
+            }
+            else if (isAnyInputFocused) {
+                const last = $('#chat').children().last();
+                last.focus();
+                scrollIntoViewIfNeeded(last);
+            } else {
+                const prevMes = $(focusedMes).prev('.mes');
+                if (prevMes.length > 0) {
+                    prevMes.focus();
+                    scrollIntoViewIfNeeded(prevMes);
+                } else {
+                    tryFocusLastFocusedMes();
+                }   
+            }
+        } else if (event.key == 'ArrowDown' && !isAnyInputFocused) {
+            event.preventDefault();
+            if (isLast) {
+                $('#send_textarea').focus();
+            } else {
+                const nextMes = $(focusedMes).next('.mes');
+                if (nextMes.length > 0) {
+                    nextMes.focus();
+                    scrollIntoViewIfNeeded(nextMes);
+                } else {
+                    tryFocusLastFocusedMes();
+                }
+            }
+        } else if (event.key === 'End' && !isAnyInputFocused) {
+            event.preventDefault();
+            const el = $('#chat').children().last();
+            el.focus();
+            scrollIntoViewIfNeeded(el);
+        } else if (event.key === 'Home' && !isAnyInputFocused) {
+            event.preventDefault();
+            const el = $('#chat').children().first();
+            el.focus();
+            scrollIntoViewIfNeeded(el);
+        } else if (event.key === 'PageUp' && !isAnyInputFocused && usingKbNav) {
+            event.preventDefault();
+            const targetId = Math.max(Number(lastFocusedMesId) - 5, Number($('#chat').children().first().attr('mesid')));
+            const target = $('.mes').filter(`[mesid="${targetId}"]`);
+            if (target.length > 0) {
+                target.focus();
+                scrollIntoViewIfNeeded(target);
+            }
+        } else if (event.key === 'PageDown' && !isAnyInputFocused && usingKbNav) {
+            event.preventDefault();
+            const targetId = Math.min(Number(lastFocusedMesId) + 5, Number($('#chat').children().last().attr('mesid')));
+            const target = $('.mes').filter(`[mesid="${targetId}"]`);
+            if (target.length > 0) {
+                target.focus();
+                scrollIntoViewIfNeeded(target);
+            }
+        }
+        
+        if (usingKbNav && !isAnyInputFocused) {
+            if (event.key == 'e') {
+                if ($('#curEditTextarea').is(':visible')) {
+                    $('#curEditTextarea').focus();
+                    event.preventDefault();
+                } else {            
+                    const editButton = $(focusedMes).find('.mes_edit:visible');
+                    if (editButton) {
+                        editButton.click();
+                        event.preventDefault();
+                    }
+                }
+            } else if (event.key == 'v') {
+                const visButton = $(focusedMes).find('.mes_hide:visible, .mes_unhide:visible');
+                if (visButton) {
+                    visButton.click();
+                    event.preventDefault();
+                }
+            } else if (event.key == 'p') {
+                const promptButton = $(focusedMes).find('.mes_prompt:visible');
+                if (promptButton) {
+                    promptButton.click();
+                    event.preventDefault();
+                }
+            } else if (event.key == 'd' || event.key == 'Delete') {
+                // make sure we don't invoke delete for another edit mode element,
+                // because edit mode can be active for a message other than the
+                // highlighted one
+                const isDeletable = $(focusedMes).find('.mes_edit_delete:visible').length > 0;
+                if (isDeletable) {
+                    $(focusedMes).find('.mes_edit_delete:visible').trigger('click');
+                    event.preventDefault();
+                } else {
+                    // enter edit mode first
+                    const editButton = $(focusedMes).find('.mes_edit:visible');
+                    event.preventDefault();
+                    if (editButton) {
+                        editButton.click();
+                    }
+                    $(focusedMes).find('.mes_edit_delete:visible').trigger('click');
+                }
+            }
+        }
 
         // Helper function to check if nanogallery2's lightbox is active
         function isNanogallery2LightboxActive() {
@@ -1100,42 +1254,42 @@ export function initRossMods() {
         }
 
 
-        if (event.ctrlKey && event.key == 'ArrowUp') { //edits last USER message if chatbar is empty and focused
-            if (
-                hotkeyTargets['send_textarea'].value === '' &&
-                chatbarInFocus === true &&
-                ($('.swipe_right:last').css('display') === 'flex' || $('.last_mes').attr('is_system') === 'true') &&
-                $('#character_popup').css('display') === 'none' &&
-                $('#shadow_select_chat_popup').css('display') === 'none'
-            ) {
-                const isUserMesList = document.querySelectorAll('div[is_user="true"]');
-                const lastIsUserMes = isUserMesList[isUserMesList.length - 1];
-                const editMes = lastIsUserMes.querySelector('.mes_block .mes_edit');
-                if (editMes !== null) {
-                    $(editMes).trigger('click');
-                    return;
-                }
-            }
-        }
+        // if (event.ctrlKey && event.key == 'ArrowUp') { //edits last USER message if chatbar is empty and focused
+        //     if (
+        //         hotkeyTargets['send_textarea'].value === '' &&
+        //         chatbarInFocus === true &&
+        //         ($('.swipe_right:last').css('display') === 'flex' || $('.last_mes').attr('is_system') === 'true') &&
+        //         $('#character_popup').css('display') === 'none' &&
+        //         $('#shadow_select_chat_popup').css('display') === 'none'
+        //     ) {
+        //         const isUserMesList = document.querySelectorAll('div[is_user="true"]');
+        //         const lastIsUserMes = isUserMesList[isUserMesList.length - 1];
+        //         const editMes = lastIsUserMes.querySelector('.mes_block .mes_edit');
+        //         if (editMes !== null) {
+        //             $(editMes).trigger('click');
+        //             return;
+        //         }
+        //     }
+        // }
 
-        if (event.key == 'ArrowUp') { //edits last message if chatbar is empty and focused
-            console.log('got uparrow input');
-            if (
-                hotkeyTargets['send_textarea'].value === '' &&
-                chatbarInFocus === true &&
-                //$('.swipe_right:last').css('display') === 'flex' &&
-                $('.last_mes .mes_buttons').is(':visible') &&
-                $('#character_popup').css('display') === 'none' &&
-                $('#shadow_select_chat_popup').css('display') === 'none'
-            ) {
-                const lastMes = document.querySelector('.last_mes');
-                const editMes = lastMes.querySelector('.mes_block .mes_edit');
-                if (editMes !== null) {
-                    $(editMes).click();
-                    return;
-                }
-            }
-        }
+        // if (event.key == 'ArrowUp') { //edits last message if chatbar is empty and focused
+        //     console.log('got uparrow input');
+        //     if (
+        //         hotkeyTargets['send_textarea'].value === '' &&
+        //         chatbarInFocus === true &&
+        //         //$('.swipe_right:last').css('display') === 'flex' &&
+        //         $('.last_mes .mes_buttons').is(':visible') &&
+        //         $('#character_popup').css('display') === 'none' &&
+        //         $('#shadow_select_chat_popup').css('display') === 'none'
+        //     ) {
+        //         const lastMes = document.querySelector('.last_mes');
+        //         const editMes = lastMes.querySelector('.mes_block .mes_edit');
+        //         if (editMes !== null) {
+        //             $(editMes).click();
+        //             return;
+        //         }
+        //     }
+        // }
 
         if (event.key == 'Escape') { //closes various panels
             //dont override Escape hotkey functions from script.js
@@ -1206,10 +1360,10 @@ export function initRossMods() {
                 return;
             }
 
-            if ($('#logprobsViewer').is(':visible')) {
-                $('#logprobsViewerClose').trigger('click');
-                return;
-            }
+            // if ($('#logprobsViewer').is(':visible')) {
+            //     $('#logprobsViewerClose').trigger('click');
+            //     return;
+            // }
 
             $('#movingDivs > div').each(function () {
                 if ($(this).is(':visible')) {
@@ -1234,6 +1388,12 @@ export function initRossMods() {
                 $('.draggable:first').remove();
                 return;
             }
+            
+            usingKbNav = false;
+            if ($('.mes.keyboard_focused').length > 0) {
+                $('.mes.keyboard_focused').removeClass('keyboard_focused');
+                $('#chat').focus();
+            }
         }
 
 
@@ -1244,5 +1404,25 @@ export function initRossMods() {
             // event.preventDefault();
             console.log('Ctrl +' + event.key + ' pressed!');
         }
+    }
+}
+
+function scrollIntoViewIfNeeded(element) {
+    const container = $('#chat');
+    const containerTop = container.offset().top;
+    const containerBottom = containerTop + container.height();
+    const elementTop = $(element).offset().top;
+    const elementBottom = elementTop + $(element).outerHeight();
+
+    if (elementTop < containerTop) {
+        // Element is above the visible area
+        container.animate({
+            scrollTop: container.scrollTop() - (containerTop - elementTop) - 20
+        }, 80);
+    } else if (elementBottom > containerBottom) {
+        // Element is below the visible area
+        container.animate({
+            scrollTop: container.scrollTop() + (elementBottom - containerBottom) + 20
+        }, 80);
     }
 }

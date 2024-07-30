@@ -10839,10 +10839,21 @@ jQuery(async function () {
 
     $(document).keyup(function (e) {
         if (e.key === 'Escape') {
+            if (Popup.util.isPopupOpen())
+                return;
+            event.preventDefault();
             const isEditVisible = $('#curEditTextarea').is(':visible');
+            const isEditFocused = $('#curEditTextarea').is(':focus');
+            if (isEditVisible && isEditFocused) {
+                // just focus the parent message
+                $('#curEditTextarea').closest('.mes').focus();
+                return;
+            }
             if (isEditVisible && power_user.auto_save_msg_edits === false) {
+                const thisMes = $('#curEditTextarea').closest('.mes');
                 closeMessageEditor();
-                $('#send_textarea').focus();
+                // $('#send_textarea').focus();
+                thisMes.focus();
                 return;
             }
             if (isEditVisible && power_user.auto_save_msg_edits === true) {
