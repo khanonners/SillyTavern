@@ -28,7 +28,7 @@ let galleryMaxRows = 3;
 
 $('body').on('click', '.dragClose', function () {
     const relatedId = $(this).data('related-id');  // Get the ID of the related draggable
-    $(`body > .draggable[id="${relatedId}"]`).remove();  // Remove the associated draggable
+    $(`body .draggable[id="${relatedId}"]`).remove();  // Remove the associated draggable
 });
 
 const CUSTOM_GALLERY_REMOVED_EVENT = 'galleryRemoved';
@@ -162,7 +162,7 @@ async function showCharGallery() {
             'js',
         );
         firstTime = false;
-        toastr.info('Images can also be found in the folder `user/images`', 'Drag and drop images onto the gallery to upload them', { timeOut: 6000 });
+        // toastr.info('Images can also be found in the folder `user/images`', 'Drag and drop images onto the gallery to upload them', { timeOut: 6000 });
     }
 
     try {
@@ -362,8 +362,9 @@ function makeDragImg(id, url) {
         }
     }
 
-    // Step 3: Attach it to the body
-    document.body.appendChild(newElement);
+    // Step 3: Attach it to the gallery_container
+    const container = document.getElementById('gallery_container');
+    container.appendChild(newElement);
 
     // Step 4: Call dragElement and loadMovingUIState
     const appendedElement = document.getElementById(uniqueId);

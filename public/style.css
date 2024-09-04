@@ -5136,7 +5136,7 @@ body:not(.movingUI) .drawer-content.maximized {
     color: var(--SmartThemeBodyColor);
 }
 
-.draggable {
+.draggable, #gallery_container {
     min-width: 100px;
     min-height: 100px;
     max-height: 90vh;
@@ -5155,6 +5155,30 @@ body:not(.movingUI) .drawer-content.maximized {
     backdrop-filter: blur(var(--SmartThemeBlurStrength));
     background-color: var(--SmartThemeBlurTintColor);
     padding: 5px;
+}
+
+#gallery {
+    z-index: 100;
+}
+
+#gallery_container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    height: 100%;
+    background: none;
+    filter: none;
+    backdrop-filter: none;
+    border: none;
+}
+#gallery_container .draggable {
+    position: relative;
+    width: unset;
+}
+#gallery_container .draggable:last-child:nth-child(odd) {
+    grid-column: span 2;
+}
+#gallery_container .draggable:last-child:nth-child(odd) img {
+    object-fit: scale-down;
 }
 
 .zoomed_avatar {
