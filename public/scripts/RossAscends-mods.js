@@ -1383,9 +1383,9 @@ export function initRossMods() {
                 $('#rightNavDrawerIcon').trigger('click');
                 return;
             }
-            if ($('.draggable').is(':visible')) {
+            if ($('.draggable').not('#gallery').is(':visible')) {
                 // Remove the first matched element
-                $('.draggable:first').remove();
+                $('.draggable:not(#gallery):first').remove();
                 return;
             }
             
