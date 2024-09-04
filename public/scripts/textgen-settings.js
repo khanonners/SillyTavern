@@ -895,10 +895,11 @@ async function generateTextGenWithStreaming(generate_data, signal) {
 
     return async function* streamData() {
         let text = '';
-        /** @type {import('./logprobs.js').TokenLogprobs | null} */
+        /** @type {import('./logprobs.js').TokenLogprobs | null | []} */
         let logprobs = null;
         const swipes = [];
         while (true) {
+            logprobs = null;
             const { done, value } = await reader.read();
             if (done) return;
             if (value.data === '[DONE]') return;
@@ -913,7 +914,24 @@ async function generateTextGenWithStreaming(generate_data, signal) {
             } else {
                 const newText = data?.choices?.[0]?.text || data?.content || '';
                 text += newText;
-                logprobs = parseTextgenLogprobs(newText, data.choices?.[0]?.logprobs || data?.completion_probabilities);
+
+                if (data?.choices?.[0]?.logprobs) {
+                    if (!logprobs) {
+                        logprobs = [];
+                    }
+
+                    // logprobs = parseTextgenLogprobs(newText, data.choices?.[0]?.logprobs || data?.completion_probabilities);
+
+                    // logprobs object contains four fields, tokens, token_logprobs, text_offset, top_logprobs
+                    // each field is an array of objects, because a single choice emitted by the server can contain
+                    // multiple consecutive tokens. we need to split the logprobs object into one object per token
+                    const numTokens = data.choices[0].logprobs.tokens.length;
+                    for (let i = 0; i < numTokens; i++) {
+                        const token = data.choices[0].logprobs.tokens[i];
+                        const topLogprobs = data.choices[0].logprobs.top_logprobs[i];
+                        logprobs.push(parseTextgenLogprobs(token, { token, top_logprobs: [topLogprobs] }));
+                    }
+                }
             }
 
             yield { text, swipes, logprobs };
