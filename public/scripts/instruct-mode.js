@@ -80,7 +80,7 @@ function migrateInstructModeSettings(settings) {
  */
 export async function loadInstructMode(data) {
     if (data.instruct !== undefined) {
-        instruct_presets = data.instruct;
+        instruct_presets = data.instruct.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     migrateInstructModeSettings(power_user.instruct);

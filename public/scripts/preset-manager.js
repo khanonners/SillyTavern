@@ -1,5 +1,6 @@
 import {
     amount_gen,
+    callPopup,
     characters,
     eventSource,
     event_types,
@@ -202,6 +203,54 @@ class PresetManager {
         this.updateList(name, preset);
     }
 
+    async renamePreset(oldName, newName) {
+        const selectedPresetName = this.getSelectedPreset();
+        console.log('renaming preset', { oldName, newName, selectedPresetName });
+        if (oldName !== selectedPresetName) {
+            console.warn('Preset not found');
+            return;
+        }
+
+        const response = await fetch('/api/presets/rename', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ oldName, newName, apiId: this.apiId }),
+        });
+
+        if (!response.ok) {
+            toastr.error('Failed to rename preset');
+            throw new Error('Failed to rename preset');
+        }
+
+        const { preset_names, presets } = this.getPresetList();
+
+        // so-called "keyed" APIs use an array of preset objects with a name property
+        // and "non-keyed" APIs use a map of preset objects by name.
+        if (this.isKeyedApi()) {
+            const presetObj = presets.find(p => p.name === oldName);
+            presetObj.name = newName;
+            // getSelectedPreset regenerates the preset_names list on each call
+            // so there is no need to update it here
+        } else {
+            const presetObj = presets[oldName];
+            presetObj.name = newName;
+            delete presets[oldName];
+            presets[newName] = presetObj;
+            // preset_names is a persistent list of preset names that must be
+            // fixed when renaming a preset
+            const presetNameIndex = preset_names.indexOf(oldName);
+            preset_names[presetNameIndex] = newName;
+        }
+
+        const option = $(this.select).find(`option[value="${selectedPresetName}"]`);
+        option.text(newName);
+        option.val(newName);
+        option.attr('selected', 'true');
+
+        this.sortList();
+        saveSettingsDebounced();
+    }
+
     getPresetList() {
         let presets = [];
         let preset_names = {};
@@ -276,6 +325,16 @@ class PresetManager {
                 $(this.select).val(value).trigger('change');
             }
         }
+    }
+
+    sortList() {
+        const currentValue = $(this.select).val();
+        const options = $(this.select).find('option');
+        options.sort((a, b) => a.text.localeCompare(b.text));
+        $(this.select).html(options);
+        console.log('sorted preset list');
+        $(this.select).find(`option[value="${currentValue}"]`).prop('selected', true);
+        $(this.select).val(currentValue).trigger('change');
     }
 
     getPresetSettings(name) {
@@ -622,6 +681,34 @@ export async function initPresetManager() {
         }
 
         saveSettingsDebounced();
+    });
+
+    $(document).on('click', '[data-preset-manager-rename]', async function () {
+        const apiId = $(this).data('preset-manager-rename');
+        const presetManager = getPresetManager(apiId);
+
+        if (!presetManager) {
+            console.warn(`Preset Manager not found for API: ${apiId}`);
+            return;
+        }
+
+        const name = presetManager.getSelectedPresetName();
+
+        if (!name) {
+            console.warn('Preset name not found');
+            return;
+        }
+
+        const newName = await callPopup('<h3>Rename Preset</h3>Enter a new name for this preset:<br>The new name will be saved as a new preset with the same settings.', 'input', name);
+
+        if (!newName) {
+            console.warn('Preset name not provided');
+            return;
+        }
+
+        await presetManager.renamePreset(name, newName);
+        toastr.success('Preset renamed');
+        return;
     });
 
     $(document).on('click', '[data-preset-manager-restore]', async function () {

@@ -52,6 +52,34 @@ router.post('/save', jsonParser, function (request, response) {
     return response.send({ name });
 });
 
+router.post('/rename', jsonParser, function (request, response) {
+    const oldName = sanitize(request.body.oldName)
+    const newName = sanitize(request.body.newName)
+
+    if (!oldName || !newName) {
+        return response.sendStatus(400);
+    }
+
+    const { folder, extension } = getPresetSettingsByAPI(request.body.apiId, request.user.directories);
+    const oldPath = path.join(folder, `${oldName}${extension}`);
+    const newPath = path.join(folder, `${newName}${extension}`);
+
+    if (!fs.existsSync(oldPath)) {
+        return response.sendStatus(404);
+    }
+    if (fs.existsSync(newPath)) {
+        console.log('New preset name is already in use');
+        return response.sendStatus(400);
+    }
+
+    const content = fs.readFileSync(oldPath, 'utf-8');
+    const data = JSON.parse(content);
+    data.name = newName;
+    fs.writeFileSync(newPath, JSON.stringify(data, null, 4), 'utf-8');
+    fs.unlinkSync(oldPath);
+    return response.send({ ok: true });
+});
+
 router.post('/delete', jsonParser, function (request, response) {
     const name = sanitize(request.body.name);
     if (!name) {
