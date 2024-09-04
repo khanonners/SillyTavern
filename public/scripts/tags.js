@@ -675,7 +675,7 @@ function selectTag(event, ui, listSelector, { tagListOptions = {} } = {}) {
     }
 
     // unfocus and clear the input
-    $(event.target).val('').trigger('input');
+    $(event.target).val('');
 
     // Optional, check for multiple character ids being present.
     const characterData = event.target.closest('#bulk_tags_div')?.dataset.characters;
@@ -1291,6 +1291,7 @@ export function createTagInput(inputSelector, listSelector, tagListOptions = {})
             source: (i, o) => findTag(i, o, listSelector),
             select: (e, u) => selectTag(e, u, listSelector, { tagListOptions: tagListOptions }),
             minLength: 0,
+            delay: 0,
         })
         .focus(onTagInputFocus); // <== show tag list on click
 }
